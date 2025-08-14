@@ -1,0 +1,20 @@
+{
+  "name": "videocap-to-gif",
+  "version": "1.0.0",
+  "description": "A Node.js CLI to capture screen, crop, trim and convert to GIF.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": [
+    "gif",
+    "screen-capture",
+    "ffmpeg"
+  ],
+  "author": "Gemini",
+  "license": "ISC",
+  "dependencies": {
+    "execa": "^4.1.0",
+    "yargs": "^17.3.1"
+  }
+}
