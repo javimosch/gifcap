@@ -3,8 +3,10 @@
   "version": "1.0.0",
   "description": "A Node.js CLI to capture screen, crop, trim and convert to GIF.",
   "main": "index.js",
+  "bin": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "build": "pkg ."
   },
   "keywords": [
     "gif",
@@ -16,5 +18,16 @@
   "dependencies": {
     "execa": "^4.1.0",
     "yargs": "^17.3.1"
+  },
+  "devDependencies": {
+    "pkg": "^5.8.1"
+  },
+  "pkg": {
+    "targets": [
+      "node18-linux-x64",
+      "node18-macos-x64",
+      "node18-win-x64"
+    ],
+    "outputPath": "dist"
   }
 }
