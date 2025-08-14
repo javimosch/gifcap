@@ -49,7 +49,7 @@ const argv = yargs(process.argv.slice(2))
   .option('gif', {
     alias: 'g',
     type: 'string',
-    description: 'GIF resolution (e.g., 1024x1024)',
+    description: 'GIF resolution (e.g., 1024x1024 or 720p)',
     default: '1024x1024',
   })
   .option('gifcompression', {
@@ -81,6 +81,17 @@ function getLastArg(arg) {
   return arg;
 }
 
+const resolutions = {
+  '480p': '854x480',
+  '720p': '1280x720',
+  '1080p': '1920x1080',
+  '1440p': '2560x1440',
+  '4k': '3840x2160',
+  'vga': '640x480',
+  'svga': '800x600',
+  'xga': '1024x768',
+};
+
 async function getScreenResolution() {
     try {
         const { stdout } = await execa('xdpyinfo');
@@ -104,12 +115,13 @@ async function main() {
   const end = getLastArg(argv.end);
   const start = getLastArg(argv.start);
   const speed = getLastArg(argv.speed);
-  const gif = getLastArg(argv.gif);
+  const gifArg = getLastArg(argv.gif);
   const gifcompression = getLastArg(argv.gifcompression);
   const keepAspectRatio = getLastArg(argv.keepAspectRatio);
   const output = getLastArg(argv.output);
 
-  const [gifWidth, gifHeight] = gif.split('x').map(Number);
+  const resolution = resolutions[gifArg] || gifArg;
+  const [gifWidth, gifHeight] = resolution.split('x').map(Number);
   const outputGif = output;
   const tempMp4 = `temp-${Date.now()}.mp4`;
 
@@ -118,12 +130,18 @@ async function main() {
   console.log('Starting screen recording... Press CTRL+C to stop.');
 
   const recordingProcess = execa('ffmpeg', [
-    '-video_size', screenResolution,
-    '-framerate', '30',
-    '-f', 'x11grab',
-    '-i', ':0.0',
-    '-c:v', 'libx264',
-    '-qp', '0',
+    '-video_size',
+    screenResolution,
+    '-framerate',
+    '30',
+    '-f',
+    'x11grab',
+    '-i',
+    ':0.0',
+    '-c:v',
+    'libx264',
+    '-qp',
+    '0',
     tempMp4
   ], { stdio: 'pipe', reject: false });
 
@@ -135,8 +153,10 @@ async function main() {
     console.log('Processing video and converting to GIF...');
 
     const palettegenArgs = [
-        '-i', tempMp4,
-        '-vf', `palettegen`,
+        '-i',
+        tempMp4,
+        '-vf',
+        `palettegen`,
         '-y',
         'palette.png'
     ];
@@ -166,11 +186,16 @@ async function main() {
     }
 
     const gifArgs = [
-        '-i', tempMp4,
-        '-i', 'palette.png',
-        '-filter_complex', `[0:v]crop=iw-${left}-${right}:ih-${top}-${bottom}:${left}:${top},setpts=${1/speed}*PTS,${scaleFilter}[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle`,
-        '-ss', start.toString(),
-        '-to', cutDuration.toString(),
+        '-i',
+        tempMp4,
+        '-i',
+        'palette.png',
+        '-filter_complex',
+        `[0:v]crop=iw-${left}-${right}:ih-${top}-${bottom}:${left}:${top},setpts=${1/speed}*PTS,${scaleFilter}[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle`,
+        '-ss',
+        start.toString(),
+        '-to',
+        cutDuration.toString(),
         '-y',
         outputGif
     ];
