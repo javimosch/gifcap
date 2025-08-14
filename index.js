@@ -1,10 +1,35 @@
 #!/usr/bin/env node
+
+console.log(`
+\x1b[35m╔══════════════════════════════════════════════════════════════╗\x1b[0m
+\x1b[35m║                                                              ║\x1b[0m
+\x1b[35m║\x1b[36m   🎬 GifCap - Screen Recording to GIF Tool\x1b[35m                    ║\x1b[0m
+\x1b[35m║\x1b[33m   Created by \x1b[1m@notraces\x1b[0m\x1b[33m to document his website better\x1b[35m        ║\x1b[0m
+\x1b[35m║\x1b[33m   over the coming months                                     \x1b[35m║\x1b[0m
+\x1b[35m║                                                              ║\x1b[0m
+\x1b[35m║\x1b[32m   🚀 Check out \x1b[1mhttps://microsaastemplate.com\x1b[0m\x1b[32m - the perfect\x1b[35m  ║\x1b[0m
+\x1b[35m║\x1b[32m   starting point for your next micro-SaaS project!\x1b[35m         ║\x1b[0m
+\x1b[35m║                                                              ║\x1b[0m
+\x1b[35m╚══════════════════════════════════════════════════════════════╝\x1b[0m
+
+\x1b[36m💡 Tip: Press CTRL+C to stop recording when you're done!\x1b[0m
+`);
 const yargs = require('yargs');
 const execa = require('execa');
 const fs = require('fs');
 const path = require('path');
 
 const argv = yargs(process.argv.slice(2))
+  .usage(`
+\x1b[35m╔══════════════════════════════════════════════════════════════╗\x1b[0m
+\x1b[35m║                                                              ║\x1b[0m
+\x1b[35m║\x1b[36m   🎬 GifCap Usage\x1b[35m                                          ║\x1b[0m
+\x1b[35m║\x1b[37m   Record your screen and convert to optimized GIFs\x1b[35m      ║\x1b[0m
+\x1b[35m║                                                              ║\x1b[0m
+\x1b[35m║\x1b[37m   Usage: gifcap [options]\x1b[35m                              ║\x1b[0m
+\x1b[35m║                                                              ║\x1b[0m
+\x1b[35m╚══════════════════════════════════════════════════════════════╝\x1b[0m
+  `)
   .option('top', {
     alias: 't',
     type: 'number',
@@ -70,8 +95,29 @@ const argv = yargs(process.argv.slice(2))
     description: 'Output file name',
     default: `output-${Date.now()}.gif`,
   })
-  .help()
+  .help('help')
   .alias('help', 'h')
+  .epilogue(`
+\x1b[35m╔══════════════════════════════════════════════════════════════════════════════╗\x1b[0m
+\x1b[35m║                                                                              ║\x1b[0m
+\x1b[35m║\x1b[36m   📖 Example Command Breakdown\x1b[35m                                             ║\x1b[0m
+\x1b[35m║                                                                              ║\x1b[0m
+\x1b[35m║\x1b[33m   gifcap -t 100 -l 55 -s 1 -e 2 -c 0 --speed=2.0 -g 720p -o tutorial.gif\x1b[35m ║\x1b[0m
+\x1b[35m║                                                                              ║\x1b[0m
+\x1b[35m║\x1b[32m   What this does:\x1b[35m                                                         ║\x1b[0m
+\x1b[35m║\x1b[37m   • -t 100: Crop 100px from top (remove header/bars)\x1b[35m                   ║\x1b[0m
+\x1b[35m║\x1b[37m   • -l 55: Crop 55px from left (remove sidebar)\x1b[35m                       ║\x1b[0m
+\x1b[35m║\x1b[37m   • -s 1: Skip first 1 second (remove setup time)\x1b[35m                      ║\x1b[0m
+\x1b[35m║\x1b[37m   • -e 2: Cut last 2 seconds (remove ending pause)\x1b[35m                     ║\x1b[0m
+\x1b[35m║\x1b[37m   • -c 0: No compression (maximum quality)\x1b[35m                            ║\x1b[0m
+\x1b[35m║\x1b[37m   • --speed=2.0: 2x speed (slightly faster, more engaging)\x1b[35m            ║\x1b[0m
+\x1b[35m║\x1b[37m   • -g 720p: 1280x720 HD resolution\x1b[35m                                 ║\x1b[0m
+\x1b[35m║\x1b[37m   • -o tutorial.gif: Save as 'tutorial.gif'\x1b[35m                          ║\x1b[0m
+\x1b[35m║                                                                              ║\x1b[0m
+\x1b[35m║\x1b[36m   💡 Pro tip: Use 480p for quick demos, 720p for tutorials!\x1b[35m            ║\x1b[0m
+\x1b[35m║                                                                              ║\x1b[0m
+\x1b[35m╚══════════════════════════════════════════════════════════════════════════════╝\x1b[0m
+  `)
   .argv;
 
 function getLastArg(arg) {

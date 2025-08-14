@@ -1,9 +1,11 @@
 {
-  "name": "videocap-to-gif",
+  "name": "gifcap",
   "version": "1.0.0",
   "description": "A Node.js CLI to capture screen, crop, trim and convert to GIF.",
   "main": "index.js",
-  "bin": "index.js",
+  "bin": {
+    "gifcap": "index.js"
+  },
   "scripts": {
     "start": "node index.js",
     "build": "pkg ."
@@ -13,7 +15,7 @@
     "screen-capture",
     "ffmpeg"
   ],
-  "author": "Gemini",
+  "author": "notraces <notraces@microsaastemplate.com> (https://microsaastemplate.com)",
   "license": "ISC",
   "dependencies": {
     "execa": "^4.1.0",
