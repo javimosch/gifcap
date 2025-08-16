@@ -1,2 +1,7 @@
 docs
 artifacts
+dist
+node_modules
+temp*
+*.gif
+*.mp4
