@@ -95,6 +95,11 @@ const argv = yargs(process.argv.slice(2))
     description: 'Output file name',
     default: `output-${Date.now()}.gif`,
   })
+  .option('mp4', {
+    type: 'boolean',
+    description: 'Output an MP4 file instead of a GIF',
+    default: false,
+  })
   .help('help')
   .alias('help', 'h')
   .epilogue(`
@@ -115,6 +120,16 @@ const argv = yargs(process.argv.slice(2))
 \x1b[35m║\x1b[37m   • -o tutorial.gif: Save as 'tutorial.gif'\x1b[35m                          ║\x1b[0m
 \x1b[35m║                                                                              ║\x1b[0m
 \x1b[35m║\x1b[36m   💡 Pro tip: Use 480p for quick demos, 720p for tutorials!\x1b[35m            ║\x1b[0m
+\x1b[35m║                                                                              ║\x1b[0m
+\x1b[35m║\x1b[36m   Available Resolutions:\x1b[35m                                                  ║\x1b[0m
+\x1b[35m║\x1b[37m   480p: 854x480\x1b[35m                                                          ║\x1b[0m
+\x1b[35m║\x1b[37m   720p: 1280x720\x1b[35m                                                         ║\x1b[0m
+\x1b[35m║\x1b[37m   1080p: 1920x1080\x1b[35m                                                       ║\x1b[0m
+\x1b[35m║\x1b[37m   1440p: 2560x1440\x1b[35m                                                       ║\x1b[0m
+\x1b[35m║\x1b[37m   4k: 3840x2160\x1b[35m                                                          ║\x1b[0m
+\x1b[35m║\x1b[37m   vga: 640x480\x1b[35m                                                           ║\x1b[0m
+\x1b[35m║\x1b[37m   svga: 800x600\x1b[35m                                                          ║\x1b[0m
+\x1b[35m║\x1b[37m   xga: 1024x768\x1b[35m                                                          ║\x1b[0m
 \x1b[35m║                                                                              ║\x1b[0m
 \x1b[35m╚══════════════════════════════════════════════════════════════════════════════╝\x1b[0m
   `)
@@ -165,11 +180,17 @@ async function main() {
   const gifcompression = getLastArg(argv.gifcompression);
   const keepAspectRatio = getLastArg(argv.keepAspectRatio);
   const output = getLastArg(argv.output);
+  const mp4 = getLastArg(argv.mp4);
 
   const resolution = resolutions[gifArg] || gifArg;
   const [gifWidth, gifHeight] = resolution.split('x').map(Number);
-  const outputGif = output;
   const tempMp4 = `temp-${Date.now()}.mp4`;
+
+  let outputFilename = output;
+  if (mp4 && !output.endsWith('.mp4')) {
+    outputFilename = `${output}.mp4`;
+  }
+
 
   const screenResolution = await getScreenResolution();
 
@@ -196,18 +217,7 @@ async function main() {
     recordingProcess.stdin.write('q');
     await recordingProcess;
 
-    console.log('Processing video and converting to GIF...');
-
-    const palettegenArgs = [
-        '-i',
-        tempMp4,
-        '-vf',
-        `palettegen`,
-        '-y',
-        'palette.png'
-    ];
-
-    await execa('ffmpeg', palettegenArgs);
+    console.log('Processing video...');
 
     const durationOutput = await execa('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', tempMp4]);
     const duration = parseFloat(durationOutput.stdout);
@@ -231,29 +241,58 @@ async function main() {
       scaleFilter = `scale=${gifWidth}:${gifHeight}:flags=lanczos`;
     }
 
-    const gifArgs = [
+    if (mp4) {
+      const mp4Args = [
         '-i',
         tempMp4,
-        '-i',
-        'palette.png',
-        '-filter_complex',
-        `[0:v]crop=iw-${left}-${right}:ih-${top}-${bottom}:${left}:${top},setpts=${1/speed}*PTS,${scaleFilter}[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle`,
+        '-vf',
+        `crop=iw-${left}-${right}:ih-${top}-${bottom}:${left}:${top},setpts=${1/speed}*PTS,${scaleFilter}`,
         '-ss',
         start.toString(),
         '-to',
         cutDuration.toString(),
         '-y',
-        outputGif
-    ];
-    
-    await execa('ffmpeg', gifArgs);
+        outputFilename
+      ];
 
+      await execa('ffmpeg', mp4Args);
+      console.log(`MP4 saved as ${outputFilename}`);
+    } else {
+      console.log('Converting to GIF...');
+      const palettegenArgs = [
+          '-i',
+          tempMp4,
+          '-vf',
+          `palettegen`,
+          '-y',
+          'palette.png'
+      ];
 
-    console.log(`GIF saved as ${outputGif}`);
+      await execa('ffmpeg', palettegenArgs);
+
+      const gifArgs = [
+          '-i',
+          tempMp4,
+          '-i',
+          'palette.png',
+          '-filter_complex',
+          `[0:v]crop=iw-${left}-${right}:ih-${top}-${bottom}:${left}:${top},setpts=${1/speed}*PTS,${scaleFilter}[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle`,
+          '-ss',
+          start.toString(),
+          '-to',
+          cutDuration.toString(),
+          '-y',
+          outputFilename
+      ];
+      
+      await execa('ffmpeg', gifArgs);
+      console.log(`GIF saved as ${outputFilename}`);
+      fs.unlinkSync('palette.png');
+    }
+
 
     // Cleanup
     fs.unlinkSync(tempMp4);
-    fs.unlinkSync('palette.png');
 
     process.exit(0);
   });
