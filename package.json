@@ -1,6 +1,6 @@
 {
   "name": "gifcap",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "A Node.js CLI to capture screen, crop, trim and convert to GIF.",
   "main": "index.js",
   "bin": {
