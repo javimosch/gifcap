@@ -26,10 +26,18 @@ const argv = yargs(process.argv.slice(2))
 \x1b[35m║\x1b[36m   🎬 GifCap Usage\x1b[35m                                          ║\x1b[0m
 \x1b[35m║\x1b[37m   Record your screen and convert to optimized GIFs\x1b[35m      ║\x1b[0m
 \x1b[35m║                                                              ║\x1b[0m
-\x1b[35m║\x1b[37m   Usage: gifcap [options]\x1b[35m                              ║\x1b[0m
+\x1b[35m║\x1b[37m   Usage: gifcap [command] [options]\x1b[35m                       ║\x1b[0m
+\x1b[35m║\x1b[37m   Commands: record, cut\x1b[35m                                    ║\x1b[0m
 \x1b[35m║                                                              ║\x1b[0m
 \x1b[35m╚══════════════════════════════════════════════════════════════╝\x1b[0m
   `)
+  .command('record', 'Record screen and create GIF')
+  .command('cut <input>', 'Cut seconds from start of existing GIF', (yargs) => {
+    yargs.positional('input', {
+      describe: 'Input GIF file to cut',
+      type: 'string'
+    })
+  })
   .option('top', {
     alias: 't',
     type: 'number',
@@ -107,7 +115,8 @@ const argv = yargs(process.argv.slice(2))
 \x1b[35m║                                                                              ║\x1b[0m
 \x1b[35m║\x1b[36m   📖 Example Command Breakdown\x1b[35m                                             ║\x1b[0m
 \x1b[35m║                                                                              ║\x1b[0m
-\x1b[35m║\x1b[33m   gifcap -t 100 -l 55 -s 1 -e 2 -c 0 --speed=2.0 -g 720p -o tutorial.gif\x1b[35m ║\x1b[0m
+\x1b[35m║\x1b[33m   gifcap record -t 100 -l 55 -s 1 -e 2 -c 0 --speed=2.0 -g 720p -o tutorial.gif\x1b[35m ║\x1b[0m
+\x1b[35m║\x1b[33m   gifcap cut demo.gif -s 1s -o cut-demo.gif\x1b[35m                                ║\x1b[0m
 \x1b[35m║                                                                              ║\x1b[0m
 \x1b[35m║\x1b[32m   What this does:\x1b[35m                                                         ║\x1b[0m
 \x1b[35m║\x1b[37m   • -t 100: Crop 100px from top (remove header/bars)\x1b[35m                   ║\x1b[0m
@@ -169,6 +178,98 @@ async function getScreenResolution() {
 
 
 async function main() {
+  // Handle the cut command
+  if (argv._[0] === 'cut') {
+    await cutGif(argv);
+    return;
+  }
+  
+  // Default to record command
+  await recordScreen(argv);
+}
+
+async function cutGif(argv) {
+  // For cut command, the input is parsed as a named argument
+  const input = argv.input; // This is how yargs provides the positional argument
+  let start = getLastArg(argv.start);
+  const end = getLastArg(argv.end);
+  const output = getLastArg(argv.output);
+  
+  // Parse start time (remove 's' suffix if present)
+  if (typeof start === 'string' && start.endsWith('s')) {
+    start = parseFloat(start.slice(0, -1));
+  } else if (typeof start === 'string') {
+    start = parseFloat(start);
+  } else if (typeof start === 'number' && isNaN(start)) {
+    start = 0; // Default to 0 if NaN
+  }
+  
+  if (!input) {
+    console.error('Error: Please provide an input GIF file to cut');
+    process.exit(1);
+  }
+  
+  if (!fs.existsSync(input)) {
+    console.error(`Error: Input file ${input} does not exist`);
+    process.exit(1);
+  }
+  
+  console.log(`Cutting ${input}...`);
+  
+  // Get the duration of the input GIF
+  try {
+    const durationOutput = await execa('ffprobe', [
+      '-v', 'error', 
+      '-show_entries', 'format=duration', 
+      '-of', 'default=noprint_wrappers=1:nokey=1', 
+      input
+    ]);
+    const duration = parseFloat(durationOutput.stdout);
+    
+    if (start >= duration) {
+      console.error(`Error: --start value (${start}s) is greater than or equal to the GIF duration (${duration}s).`);
+      process.exit(1);
+    }
+    
+    if (start + end >= duration) {
+      console.error(`Error: The sum of --start (${start}s) and --end (${end}s) is greater than or equal to the GIF duration (${duration}s).`);
+      process.exit(1);
+    }
+    
+    const cutDuration = duration - end;
+    
+    // Handle in-place editing by using a temporary file
+    let actualOutput = output;
+    let tempFile = null;
+    if (input === output) {
+      tempFile = `temp-${Date.now()}-${path.basename(output)}`;
+      actualOutput = tempFile;
+    }
+    
+    // Process the GIF cut
+    const cutArgs = [
+      '-i', input,
+      '-ss', start.toString(),
+      '-to', cutDuration.toString(),
+      '-y', actualOutput
+    ];
+    
+    await execa('ffmpeg', cutArgs);
+    
+    // If we used a temporary file, move it to the original location
+    if (tempFile) {
+      fs.renameSync(tempFile, output);
+    }
+    
+    console.log(`Cut GIF saved as ${output}`);
+    process.exit(0);
+  } catch (error) {
+    console.error('Error getting GIF duration. Please make sure ffprobe is installed.', error);
+    process.exit(1);
+  }
+}
+
+async function recordScreen(argv) {
   const top = getLastArg(argv.top);
   const bottom = getLastArg(argv.bottom);
   const left = getLastArg(argv.left);
@@ -190,7 +291,6 @@ async function main() {
   if (mp4 && !output.endsWith('.mp4')) {
     outputFilename = `${output}.mp4`;
   }
-
 
   const screenResolution = await getScreenResolution();
 
@@ -219,7 +319,12 @@ async function main() {
 
     console.log('Processing video...');
 
-    const durationOutput = await execa('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', tempMp4]);
+    const durationOutput = await execa('ffprobe', [
+      '-v', 'error', 
+      '-show_entries', 'format=duration', 
+      '-of', 'default=noprint_wrappers=1:nokey=1', 
+      tempMp4
+    ]);
     const duration = parseFloat(durationOutput.stdout);
 
     if (start >= duration) {
@@ -290,10 +395,8 @@ async function main() {
       fs.unlinkSync('palette.png');
     }
 
-
     // Cleanup
     fs.unlinkSync(tempMp4);
-
     process.exit(0);
   });
 }

@@ -24,16 +24,21 @@ Created by [@notraces](https://github.com/notraces) to document his website bett
 npm install -g gifcap
 
 # Start recording (press CTRL+C to stop)
-gifcap
+gifcap record
 
 # Create a tutorial with specific settings
-gifcap -t 100 -l 55 -s 1 -e 2 -c 0 --speed=2.0 -g 720p -o tutorial.gif
+gifcap record -t 100 -l 55 -s 1 -e 2 -c 0 --speed=2.0 -g 720p -o tutorial.gif
+
+# Cut the first 1 second from an existing GIF
+gifcap cut demo.gif -s 1s -o cut-demo.gif
 ```
 
 ## 📖 Command Options
 
 | Option | Alias | Description | Example |
 |--------|-------|-------------|---------|
+| `record` | | Record screen and create GIF/MP4 | `gifcap record -t 100 -l 55` |
+| `cut` | | Cut seconds from existing GIF | `gifcap cut -s 1 demo.gif` |
 | `--top` | `-t` | Crop pixels from top | `-t 100` |
 | `--left` | `-l` | Crop pixels from left | `-l 55` |
 | `--bottom` | `-b` | Crop pixels from bottom | `-b 50` |
@@ -50,17 +55,22 @@ gifcap -t 100 -l 55 -s 1 -e 2 -c 0 --speed=2.0 -g 720p -o tutorial.gif
 
 ### 📱 Quick Demo (Fast & Small)
 ```bash
-gifcap -g 480p --speed=1.5 -o quick-demo.gif
+gifcap record -g 480p --speed=1.5 -o quick-demo.gif
 ```
 
 ### 🎓 Tutorial (HD Quality)
 ```bash
-gifcap -t 80 -l 40 -s 1 -e 3 -c 0 --speed=1.2 -g 720p -o tutorial.gif
+gifcap record -t 80 -l 40 -s 1 -e 3 -c 0 --speed=1.2 -g 720p -o tutorial.gif
 ```
 
 ### 🎬 Feature Showcase (Cinematic)
 ```bash
-gifcap -t 120 -r 100 -s 2 -e 5 -c 0 --speed=1.0 -g 1080p -o showcase.gif
+gifcap record -t 120 -r 100 -s 2 -e 5 -c 0 --speed=1.0 -g 1080p -o showcase.gif
+```
+
+### ✂️ Cut Existing GIF
+```bash
+gifcap cut demo.gif -s 1s -o cut-demo.gif
 ```
 
 ## 🌈 Beautiful CLI Experience
@@ -75,7 +85,8 @@ $ gifcap --help
 ║   🎬 GifCap Usage                                          ║
 ║   Record your screen and convert to optimized GIFs      ║
 ║                                                              ║
-║   Usage: gifcap [options]                              ║
+║   Usage: gifcap [command] [options]                     ║
+║   Commands: record, cut                                  ║
 ║                                                              ║
 ╚══════════════════════════════════════════════════════════════╝
 ```
