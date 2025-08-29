@@ -31,6 +31,9 @@ gifcap record -t 100 -l 55 -s 1 -e 2 -c 0 --speed=2.0 -g 720p -o tutorial.gif
 
 # Cut the first 1 second from an existing GIF
 gifcap cut demo.gif -s 1s -o cut-demo.gif
+
+# Optimize a GIF to reduce file size
+gifcap optimize large.gif --target-size=2 --fps=10 --colors=128 -o small.gif
 ```
 
 ## 📖 Command Options
@@ -39,6 +42,7 @@ gifcap cut demo.gif -s 1s -o cut-demo.gif
 |--------|-------|-------------|---------|
 | `record` | | Record screen and create GIF/MP4 | `gifcap record -t 100 -l 55` |
 | `cut` | | Cut seconds from existing GIF | `gifcap cut -s 1 demo.gif` |
+| `optimize` | | Optimize GIF file size | `gifcap optimize large.gif --target-size=2` |
 | `--top` | `-t` | Crop pixels from top | `-t 100` |
 | `--left` | `-l` | Crop pixels from left | `-l 55` |
 | `--bottom` | `-b` | Crop pixels from bottom | `-b 50` |
@@ -46,10 +50,15 @@ gifcap cut demo.gif -s 1s -o cut-demo.gif
 | `--start` | `-s` | Skip seconds from start | `-s 2` |
 | `--end` | `-e` | Cut seconds from end | `-e 5` |
 | `--speed` | | Speed multiplier | `--speed=2.0` |
-| `--gif` | `-g` | Resolution (480p/720p/1080p/custom) | `-g 720p` |
 | `--gifcompression` | `-c` | Compression level 0-100 | `-c 0` |
 | `--keep-aspect-ratio` | `-a` | Maintain aspect ratio | `--keep-aspect-ratio` |
 | `--output` | `-o` | Output filename | `-o demo.gif` |
+| `--target-size` | `-ts` | Target file size in MB | `--target-size=2` |
+| `--fps` | | Target frames per second | `--fps=10` |
+| `--colors` | | Maximum number of colors (2-256) | `--colors=128` |
+| `--dither` | | Dithering method | `--dither=bayer` |
+| `--lossy` | | Lossy compression level (0-200) (requires FFmpeg 5.0+) | `--lossy=30` |
+| `--min-resolution` | `-g` | Minimum resolution (480p/720p/1080p/custom) | `-g 480p` |
 
 ## 🎯 Perfect Examples
 
@@ -72,6 +81,34 @@ gifcap record -t 120 -r 100 -s 2 -e 5 -c 0 --speed=1.0 -g 1080p -o showcase.gif
 ```bash
 gifcap cut demo.gif -s 1s -o cut-demo.gif
 ```
+
+### 🔄 Optimize GIF Size
+```bash
+# Basic optimization to target size
+gifcap optimize large.gif --target-size=2 -o small.gif
+
+# Advanced optimization with custom parameters
+gifcap optimize large.gif --target-size=1 --fps=10 --colors=128 --dither=bayer --lossy=30 -o optimized.gif
+```
+
+### Dynamic Scale Re-estimation
+
+The optimizer now dynamically re-estimates the scaling factor after each optimization attempt based on the actual output file size. This allows for more efficient convergence to the target file size while maintaining maximum quality. The scale is recalculated using the square root of the ratio between target size and current size, rounded to the nearest 5%.
+
+### Minimum Resolution Support
+
+You can now specify a minimum resolution threshold using the `-g` or `--min-resolution` option to prevent scaling below a set resolution. This is useful when you want to ensure your GIF maintains a certain quality level regardless of the target file size.
+
+Supported formats:
+- Standard resolutions: `480p`, `720p`, `1080p`
+- Custom resolution: `640x360` (width x height)
+
+Example:
+```bash
+gifcap optimize input.gif -o output.gif --target-size=2 -g 720p
+```
+
+This ensures that even when trying to meet the target file size, the GIF will never be scaled below 720p resolution.
 
 ## 🌈 Beautiful CLI Experience
 
@@ -114,19 +151,35 @@ docker run -it --rm -v $(pwd):/output gifcap [options]
 ## 🔧 Requirements
 
 - 🐧 Linux (X11 display server)
-- 🎥 FFmpeg installed
+- 🎥 FFmpeg installed (required)
+- 🔄 Gifsicle (optional, for better optimization)
 - 📦 Node.js 14+
 
-### Installing FFmpeg
+### Dependencies Auto-Installation
+
+GifCap can automatically detect missing dependencies and offer to install them:
+
+- When using the `optimize` command, it will check for required tools (FFmpeg, FFprobe)
+- If Gifsicle is not found, it will offer to install it for better optimization results
+- Requires `apt-get` for automatic installation (Ubuntu/Debian)
+
+### FFmpeg Version Compatibility
+
+- Basic optimization works with all FFmpeg versions
+- Advanced lossy compression (`--lossy` parameter) requires FFmpeg 5.0+
+- The tool automatically detects your FFmpeg version and offers to upgrade if needed
+- Auto-upgrade to FFmpeg 5.0+ is supported on Ubuntu/Debian systems
+
+### Manual Installation
 ```bash
 # Ubuntu/Debian
-sudo apt install ffmpeg
+sudo apt install ffmpeg gifsicle
 
 # macOS
-brew install ffmpeg
+brew install ffmpeg gifsicle
 
 # Windows (with chocolatey)
-choco install ffmpeg
+choco install ffmpeg gifsicle
 ```
 
 ## 🎪 Creative Use Cases
