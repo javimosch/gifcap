@@ -34,6 +34,9 @@ gifcap cut demo.gif -s 1s -o cut-demo.gif
 
 # Optimize a GIF to reduce file size
 gifcap optimize large.gif --target-size=2 --fps=10 --colors=128 -o small.gif
+
+# Convert an MP4 to a GIF
+gifcap convert video.mp4 -o animation.gif
 ```
 
 ## 📖 Command Options
@@ -43,6 +46,7 @@ gifcap optimize large.gif --target-size=2 --fps=10 --colors=128 -o small.gif
 | `record` | | Record screen and create GIF/MP4 | `gifcap record -t 100 -l 55` |
 | `cut` | | Cut seconds from existing GIF | `gifcap cut -s 1 demo.gif` |
 | `optimize` | | Optimize GIF file size | `gifcap optimize large.gif --target-size=2` |
+| `convert` | | Convert MP4 to GIF | `gifcap convert video.mp4 -o animation.gif` |
 | `--top` | `-t` | Crop pixels from top | `-t 100` |
 | `--left` | `-l` | Crop pixels from left | `-l 55` |
 | `--bottom` | `-b` | Crop pixels from bottom | `-b 50` |
