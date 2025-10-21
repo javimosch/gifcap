@@ -118,6 +118,12 @@ const argv = yargs(process.argv.slice(2))
       describe: "Input GIF file to optimize",
       type: "string",
     })
+  })
+  .command("convert <input>", "Convert MP4 to GIF", (yargs) => {
+    yargs.positional("input", {
+      describe: "Input MP4 file to convert",
+      type: "string",
+    })
     .option("fps", {
       type: "number",
       description: "Target frames per second (lower values reduce file size)",
@@ -905,8 +911,54 @@ async function main() {
     return;
   }
 
+  if (argv._[0] === "convert") {
+    await convertMp4ToGif(argv);
+    return;
+  }
+
   // Default to record command
   await recordScreen(argv);
+}
+
+async function convertMp4ToGif(argv) {
+  const input = argv.input;
+  if (!fs.existsSync(input)) {
+    console.error(`Error: Input file ${input} does not exist`);
+    process.exit(1);
+  }
+
+  console.log(`Converting ${input} to GIF...`);
+
+  const output = getLastArg(argv.output);
+
+  const palettegenArgs = [
+    "-i",
+    input,
+    "-vf",
+    `palettegen`,
+    "-y",
+    "palette.png",
+  ];
+
+  await execa("ffmpeg", palettegenArgs);
+
+  const gifArgs = [
+    "-i",
+    input,
+    "-i",
+    "palette.png",
+    "-filter_complex",
+    `[0:v]paletteuse`,
+    "-y",
+    output,
+  ];
+
+  await execa("ffmpeg", gifArgs);
+
+  fs.unlinkSync("palette.png");
+
+  console.log(`GIF saved as ${output}`);
+  process.exit(0);
 }
 
 async function cutGif(argv) {
