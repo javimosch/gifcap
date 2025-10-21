@@ -1070,7 +1070,7 @@ async function recordScreen(argv) {
   const output = getLastArg(argv.output);
   const mp4 = getLastArg(argv.mp4);
 
-  const resolution = resolutions[gifArg] || gifArg;
+  const resolution = resolutions[gifArg] || gifArg || "1280x720";
   const [gifWidth, gifHeight] = resolution.split("x").map(Number);
   const tempMp4 = `temp-${Date.now()}.mp4`;
 
