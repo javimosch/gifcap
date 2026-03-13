@@ -1,6 +1,31 @@
 #!/usr/bin/env node
 
-console.log(`
+const yargs = require("yargs");
+const execa = require("execa");
+const fs = require("fs");
+const path = require("path");
+const readline = require("readline");
+
+let finalResults = {
+  success: true,
+  command: process.argv.slice(2).join(' '),
+  output: null,
+  error: null
+};
+
+function exitWithResult(data = {}, success = true) {
+  finalResults = { ...finalResults, ...data, success };
+  if (argv.json) {
+    console.log(JSON.stringify(finalResults, null, 2));
+  } else if (!success && finalResults.error) {
+    console.error(`\x1b[31mError: ${finalResults.error}\x1b[0m`);
+  }
+  process.exit(success ? 0 : 1);
+}
+
+function showBanner() {
+  if (argv.json || argv.quiet) return;
+  console.log(`
 \x1b[35m╔══════════════════════════════════════════════════════════════╗\x1b[0m
 \x1b[35m║                                                              ║\x1b[0m
 \x1b[35m║\x1b[36m   🎬 GifCap - Screen Recording to GIF Tool\x1b[35m                    ║\x1b[0m
@@ -14,11 +39,7 @@ console.log(`
 
 \x1b[36m💡 Tip: Press CTRL+C to stop recording when you're done!\x1b[0m
 `);
-const yargs = require("yargs");
-const execa = require("execa");
-const fs = require("fs");
-const path = require("path");
-const readline = require("readline");
+}
 
 // Create readline interface for user prompts
 const rl = readline.createInterface({
@@ -28,6 +49,7 @@ const rl = readline.createInterface({
 
 // Function to prompt user for yes/no questions
 async function promptYesNo(question) {
+  if (argv.yes) return true;
   return new Promise((resolve) => {
     rl.question(`${question} (y/n): `, (answer) => {
       resolve(answer.toLowerCase().startsWith('y'));
@@ -61,33 +83,37 @@ async function checkAndInstallDependencies(dependencies) {
   }
   
   // Ask user for permission to install
-  console.log(`\nMissing optimization dependencies: ${missingDeps.join(', ')}`);
+  if (!argv.quiet) console.log(`\nMissing optimization dependencies: ${missingDeps.join(', ')}`);
   const shouldInstall = await promptYesNo(
     `Would you like to install these dependencies for better GIF optimization?`
   );
   
   if (!shouldInstall) {
-    console.log('Continuing without installing dependencies. Some optimization features will be limited.');
+    if (!argv.quiet) console.log('Continuing without installing dependencies. Some optimization features will be limited.');
     return false;
   }
   
   // Check if we can use apt-get
   if (!(await isCommandAvailable('apt-get'))) {
-    console.log('\nAutomatic installation requires apt-get, which was not found.');
-    console.log(`Please install these dependencies manually: ${missingDeps.join(', ')}`);
+    if (!argv.quiet) {
+      console.log('\nAutomatic installation requires apt-get, which was not found.');
+      console.log(`Please install these dependencies manually: ${missingDeps.join(', ')}`);
+    }
     return false;
   }
   
   // Install dependencies
   try {
-    console.log(`\nInstalling: ${missingDeps.join(', ')}...`);
+    if (!argv.quiet) console.log(`\nInstalling: ${missingDeps.join(', ')}...`);
     await execa('sudo', ['apt-get', 'update']);
     await execa('sudo', ['apt-get', 'install', '-y', ...missingDeps]);
-    console.log('Dependencies installed successfully!');
+    if (!argv.quiet) console.log('Dependencies installed successfully!');
     return true;
   } catch (error) {
-    console.error('Failed to install dependencies:', error.message);
-    console.log(`Please install these dependencies manually: ${missingDeps.join(', ')}`);
+    if (!argv.quiet) {
+      console.error('Failed to install dependencies:', error.message);
+      console.log(`Please install these dependencies manually: ${missingDeps.join(', ')}`);
+    }
     return false;
   }
 }
@@ -106,7 +132,12 @@ const argv = yargs(process.argv.slice(2))
 \x1b[35m╚══════════════════════════════════════════════════════════════╝\x1b[0m
   `,
   )
-  .command("record", "Record screen and create GIF")
+  .command("record", "Record screen and create GIF", (yargs) => {
+    yargs.option("duration", {
+      type: "number",
+      description: "Recording duration in seconds (for non-interactive use)",
+    });
+  })
   .command("cut <input>", "Cut seconds from start of existing GIF", (yargs) => {
     yargs.positional("input", {
       describe: "Input GIF file to cut",
@@ -222,6 +253,21 @@ const argv = yargs(process.argv.slice(2))
     description: "Target file size in MB for optimization (default: 1)",
     default: 1,
   })
+  .option("yes", {
+    type: "boolean",
+    description: "Skip confirmation prompts",
+    default: false,
+  })
+  .option("json", {
+    type: "boolean",
+    description: "Output results as JSON",
+    default: false,
+  })
+  .option("quiet", {
+    type: "boolean",
+    description: "Suppress non-essential output",
+    default: false,
+  })
   .help("help")
   .alias("help", "h").epilogue(`
 \x1b[35m╔══════════════════════════════════════════════════════════════════════════════╗\x1b[0m
@@ -263,6 +309,13 @@ const argv = yargs(process.argv.slice(2))
 \x1b[35m╚══════════════════════════════════════════════════════════════════════════════╝\x1b[0m
   `).argv;
 
+if (argv.json) {
+  argv.quiet = true;
+}
+
+showBanner();
+
+
 function getLastArg(arg) {
   if (Array.isArray(arg)) {
     return arg[arg.length - 1];
@@ -292,44 +345,47 @@ async function optimizeGif(argv) {
   let lossy = argv.lossy || 0;
 
   if (!fs.existsSync(input)) {
-    console.error(`Input file ${input} does not exist`);
-    process.exit(1);
+    exitWithResult({ error: `Input file ${input} does not exist` }, false);
   }
 
   // Check for required dependencies
-  console.log('Checking for required dependencies...');
+  if (!argv.quiet) console.log('Checking for required dependencies...');
   const requiredDeps = ['ffmpeg', 'ffprobe'];
   const optionalDeps = ['gifsicle']; // Optional but recommended
   
   // Always check for required dependencies
   const hasRequiredDeps = await checkAndInstallDependencies(requiredDeps);
   if (!hasRequiredDeps) {
-    console.error('Required dependencies are missing. Cannot continue.');
-    process.exit(1);
+    exitWithResult({ error: 'Required dependencies are missing. Cannot continue.' }, false);
   }
   
   // Check for optional dependencies
   const hasGifsicle = await isCommandAvailable('gifsicle');
   if (!hasGifsicle) {
-    console.log('\nGifsicle is not installed. This tool can provide additional optimization.');
+    if (!argv.quiet) console.log('\nGifsicle is not installed. This tool can provide additional optimization.');
     await checkAndInstallDependencies(optionalDeps);
   }
   
   // Check if input file is already below target size
   const stats = fs.statSync(input);
   if (stats.size <= targetSizeBytes) {
-    console.log(
+    if (!argv.quiet) console.log(
       `Input file is already below ${targetSizeMB}MB (${(stats.size / (1024 * 1024)).toFixed(2)}MB)`
     );
     if (input !== output) {
       fs.copyFileSync(input, output);
-      console.log(`File copied to ${output}`);
+      if (!argv.quiet) console.log(`File copied to ${output}`);
     }
-    process.exit(0);
+    exitWithResult({ output: output, size: stats.size, optimized: false });
   }
 
-  console.log(`Optimizing ${input} to below ${targetSizeMB}MB...`);
-  console.log(`Using: FPS=${fps}, Colors=${colors}, Dither=${dither}, Lossy=${lossy}`);
+  if (!argv.quiet) {
+  if (!argv.quiet) {
+    console.log(`Optimizing ${input} to below ${targetSizeMB}MB...`);
+    console.log(`Using: FPS=${fps}, Colors=${colors}, Dither=${dither}, Lossy=${lossy}`);
+  }
+
+  }
 
   // Create a temporary file for optimization
   const tempFile = `temp-optimize-${Date.now()}-${path.basename(output)}`;
@@ -342,7 +398,7 @@ async function optimizeGif(argv) {
 
   // Function to install newer FFmpeg version
   async function installNewerFFmpeg() {
-    console.log('\nAttempting to install FFmpeg 5.0+ for lossy compression support...');
+    if (!argv.quiet) console.log('\nAttempting to install FFmpeg 5.0+ for lossy compression support...');
     
     try {
       // Check if we're on Ubuntu/Debian
@@ -351,23 +407,25 @@ async function optimizeGif(argv) {
       
       if (isUbuntuDebian) {
         // Add FFmpeg 5.0+ repository
-        console.log('Adding FFmpeg repository...');
+        if (!argv.quiet) console.log('Adding FFmpeg repository...');
         await execa('sudo', ['add-apt-repository', '-y', 'ppa:savoury1/ffmpeg5']);
         await execa('sudo', ['apt-get', 'update']);
         
         // Install FFmpeg 5.0+
-        console.log('Installing FFmpeg 5.0+...');
+        if (!argv.quiet) console.log('Installing FFmpeg 5.0+...');
         await execa('sudo', ['apt-get', 'install', '-y', 'ffmpeg']);
         
-        console.log('FFmpeg 5.0+ installed successfully!');
+        if (!argv.quiet) console.log('FFmpeg 5.0+ installed successfully!');
         return true;
       } else {
-        console.log('Automatic FFmpeg upgrade is only supported on Ubuntu/Debian systems.');
-        console.log('Please upgrade FFmpeg manually to version 5.0+ for lossy compression support.');
+        if (!argv.quiet) {
+          console.log('Automatic FFmpeg upgrade is only supported on Ubuntu/Debian systems.');
+          console.log('Please upgrade FFmpeg manually to version 5.0+ for lossy compression support.');
+        }
         return false;
       }
     } catch (error) {
-      console.error('Error installing FFmpeg:', error.message);
+      if (!argv.quiet) console.error('Error installing FFmpeg:', error.message);
       return false;
     }
   }
@@ -384,8 +442,10 @@ async function optimizeGif(argv) {
       ffmpegSupportsLossy = (majorVersion >= 5);
       
       if (!ffmpegSupportsLossy && lossy > 0) {
-        console.log('\nWarning: Your FFmpeg version does not support the lossy parameter.');
-        console.log('Lossy compression will be disabled unless you upgrade FFmpeg to version 5.0+.');
+        if (!argv.quiet) {
+          console.log('\nWarning: Your FFmpeg version does not support the lossy parameter.');
+          console.log('Lossy compression will be disabled unless you upgrade FFmpeg to version 5.0+.');
+        }
         
         // Offer to upgrade FFmpeg
         const upgradeFFmpeg = await promptYesNo('Would you like to upgrade FFmpeg to enable lossy compression? (y/n)');
@@ -400,28 +460,28 @@ async function optimizeGif(argv) {
                 const newMajorVersion = parseInt(newVersionMatch[1]);
                 ffmpegSupportsLossy = (newMajorVersion >= 5);
                 if (ffmpegSupportsLossy) {
-                  console.log('FFmpeg upgrade successful! Lossy compression is now available.');
+                  if (!argv.quiet) console.log('FFmpeg upgrade successful! Lossy compression is now available.');
                 } else {
-                  console.log('FFmpeg was upgraded but still does not support lossy compression.');
+                  if (!argv.quiet) console.log('FFmpeg was upgraded but still does not support lossy compression.');
                   lossy = 0;
                 }
               }
             } catch (error) {
-              console.log('Could not verify new FFmpeg version. Disabling lossy compression.');
+              if (!argv.quiet) console.log('Could not verify new FFmpeg version. Disabling lossy compression.');
               lossy = 0;
             }
           } else {
-            console.log('FFmpeg upgrade failed. Disabling lossy compression.');
+            if (!argv.quiet) console.log('FFmpeg upgrade failed. Disabling lossy compression.');
             lossy = 0;
           }
         } else {
-          console.log('FFmpeg upgrade declined. Disabling lossy compression.');
+          if (!argv.quiet) console.log('FFmpeg upgrade declined. Disabling lossy compression.');
           lossy = 0;
         }
       }
     }
   } catch (error) {
-    console.log('Could not determine FFmpeg version. Disabling lossy compression.');
+    if (!argv.quiet) console.log('Could not determine FFmpeg version. Disabling lossy compression.');
     lossy = 0;
   }
 
@@ -467,7 +527,7 @@ async function optimizeGif(argv) {
       originalFps = parseFloat(fpsStr);
     }
     
-    console.log(`Original: ${originalWidth}x${originalHeight}, ${originalFps.toFixed(2)} FPS, ${originalFrames} frames`);
+    if (!argv.quiet) console.log(`Original: ${originalWidth}x${originalHeight}, ${originalFps.toFixed(2)} FPS, ${originalFrames} frames`);
 
     // Estimate initial scale based on file size ratio
     // The relationship between scale and file size is roughly quadratic (area-based)
@@ -479,14 +539,14 @@ async function optimizeGif(argv) {
     let fpsRatio = 1.0;
     if (fps < originalFps) {
       fpsRatio = fps / originalFps;
-      console.log(`FPS reduction factor: ${fpsRatio.toFixed(2)} (${originalFps.toFixed(1)} → ${fps} FPS)`);
+      if (!argv.quiet) console.log(`FPS reduction factor: ${fpsRatio.toFixed(2)} (${originalFps.toFixed(1)} → ${fps} FPS)`);
     }
     
     // Adjust size ratio based on color reduction if applicable
     let colorRatio = 1.0;
     if (colors < 256) {
       colorRatio = 0.8 + (0.2 * (colors / 256)); // Rough approximation of color impact
-      console.log(`Color reduction factor: ${colorRatio.toFixed(2)} (256 → ${colors} colors)`);
+      if (!argv.quiet) console.log(`Color reduction factor: ${colorRatio.toFixed(2)} (256 → ${colors} colors)`);
     }
     
     // Combine all factors for final scale estimation
@@ -498,8 +558,10 @@ async function optimizeGif(argv) {
     // Round to nearest 0.05 for cleaner values
     scale = Math.round(scale * 20) / 20;
     
-    console.log(`Initial size: ${(initialSize / (1024 * 1024)).toFixed(2)}MB, Target: ${targetSizeMB}MB`);
-    console.log(`Estimated starting scale: ${(scale * 100).toFixed(0)}%`);
+    if (!argv.quiet) {
+      console.log(`Initial size: ${(initialSize / (1024 * 1024)).toFixed(2)}MB, Target: ${targetSizeMB}MB`);
+      console.log(`Estimated starting scale: ${(scale * 100).toFixed(0)}%`);
+    }
     
     // Binary search approach for optimization
     let binarySearchMinScale = 0.3;  // Minimum acceptable scale
@@ -554,13 +616,16 @@ async function optimizeGif(argv) {
       const heightScale = minHeight / originalHeight;
       // Use the larger scale to ensure both dimensions meet minimum requirements
       const resolutionScale = Math.max(widthScale, heightScale);
-      console.log(`Minimum resolution set to: ${minWidth}x${minHeight}`);
-      console.log(`Minimum scale set to: ${(resolutionScale * 100).toFixed(0)}% based on minimum resolution`);
+      if (!argv.quiet) {
+        console.log(`Minimum resolution set to: ${minWidth}x${minHeight}`);
+        console.log(`Minimum scale set to: ${(resolutionScale * 100).toFixed(0)}% based on minimum resolution`);
+      }
       return Math.max(defaultMinScale, resolutionScale);
     }
-    
+
     return defaultMinScale;
   })();
+
 
   // Initial scale estimate based on target size
   const initialScale = (() => {
@@ -583,7 +648,7 @@ async function optimizeGif(argv) {
   function estimateNewScale(currentScale, currentSize, targetSize) {
     // If we're already at the minimum scale and still too large, we need to inform the user
     if (currentScale <= minScale && currentSize > targetSize) {
-      console.log(`Cannot reduce further due to minimum resolution constraint (${minScale * 100}%)`);          
+      if (!argv.quiet) console.log(`Cannot reduce further due to minimum resolution constraint (${minScale * 100}%)`);          
       // Return the same scale to avoid endless loops
       return currentScale;
     }
@@ -601,7 +666,7 @@ async function optimizeGif(argv) {
     
     // If the minimum scale constraint changed our calculated scale, log this information
     if (constrainedScale > newScale) {
-      console.log(`Scale constrained by minimum resolution (wanted: ${(newScale * 100).toFixed(0)}%, using: ${(constrainedScale * 100).toFixed(0)}%)`);          
+      if (!argv.quiet) console.log(`Scale constrained by minimum resolution (wanted: ${(newScale * 100).toFixed(0)}%, using: ${(constrainedScale * 100).toFixed(0)}%)`);          
     }
     
     return constrainedScale;
@@ -610,7 +675,7 @@ async function optimizeGif(argv) {
     
     // Try different optimization strategies
     for (const strategy of strategies) {
-      console.log(`\nTrying strategy: ${strategy.name}`);
+      if (!argv.quiet) console.log(`\nTrying strategy: ${strategy.name}`);
       
       // Start with initial scale estimate
       let currentScale = initialScale;
@@ -627,12 +692,12 @@ async function optimizeGif(argv) {
         
         // Skip this attempt if dimensions are too small
         if (evenWidth < 100 || evenHeight < 100) {
-          console.log(`Dimensions too small (${evenWidth}x${evenHeight}), skipping this attempt`);
+          if (!argv.quiet) console.log(`Dimensions too small (${evenWidth}x${evenHeight}), skipping this attempt`);
           continue;
         }
         
         // Log the current dimensions for better user feedback
-        console.log(`Current dimensions: ${evenWidth}x${evenHeight}`);
+        if (!argv.quiet) console.log(`Current dimensions: ${evenWidth}x${evenHeight}`);
         
         // Generate palette with specified number of colors
         const paletteFile = `${tempDir}/palette-${strategy.colors}.png`;
@@ -648,7 +713,7 @@ async function optimizeGif(argv) {
         try {
           await execa("ffmpeg", palettegenArgs);
         } catch (error) {
-          console.error("Error generating palette:", error.message);
+          if (!argv.quiet) console.error("Error generating palette:", error.message);
           continue; // Try next attempt
         }
 
@@ -678,7 +743,7 @@ async function optimizeGif(argv) {
         try {
           await execa("ffmpeg", gifArgs);
         } catch (error) {
-          console.error("Error creating optimized GIF:", error.message);
+          if (!argv.quiet) console.error("Error creating optimized GIF:", error.message);
           continue; // Try next attempt
         }
 
@@ -686,15 +751,17 @@ async function optimizeGif(argv) {
         const tempStats = fs.statSync(currentTempFile);
         const currentSizeBytes = tempStats.size;
         
-        console.log(`Try: Scale=${(currentScale * 100).toFixed(0)}%, FPS=${fps}, Colors=${strategy.colors}, Lossy=${strategy.lossy}, Size=${(currentSizeBytes / (1024 * 1024)).toFixed(2)}MB`);
+        if (!argv.quiet) console.log(`Try: Scale=${(currentScale * 100).toFixed(0)}%, FPS=${fps}, Colors=${strategy.colors}, Lossy=${strategy.lossy}, Size=${(currentSizeBytes / (1024 * 1024)).toFixed(2)}MB`);
         
         // Re-estimate scale based on current result
         const newScale = estimateNewScale(currentScale, currentSizeBytes, targetSizeBytes);
         
         // If we're at minimum scale and still too large, provide clearer feedback
         if (newScale === currentScale && newScale <= minScale && currentSizeBytes > targetSizeBytes) {
-          console.log(`Cannot reduce below minimum resolution of ${minWidth}x${minHeight} while meeting target size of ${targetSizeMB}MB`);
-          console.log(`Consider using a smaller minimum resolution or increasing the target size`);
+          if (!argv.quiet) {
+            console.log(`Cannot reduce below minimum resolution of ${minWidth}x${minHeight} while meeting target size of ${targetSizeMB}MB`);
+            console.log(`Consider using a smaller minimum resolution or increasing the target size`);
+          }
           
           // Save the best result so far even if we hit the minimum resolution constraint
           if (bestSize === null || currentSizeBytes < bestSize) {
@@ -706,7 +773,7 @@ async function optimizeGif(argv) {
           
           break; // Exit this strategy since we can't go below minimum resolution
         } else {
-          console.log(`Re-estimating scale: ${(currentScale * 100).toFixed(0)}% → ${(newScale * 100).toFixed(0)}% based on current result`);
+          if (!argv.quiet) console.log(`Re-estimating scale: ${(currentScale * 100).toFixed(0)}% → ${(newScale * 100).toFixed(0)}% based on current result`);
         }
         
         currentScale = newScale;
@@ -735,14 +802,14 @@ async function optimizeGif(argv) {
         }
 
         // Binary search adjustment
-        if (currentSize <= targetSizeBytes) {
+        if (currentSizeBytes <= targetSizeBytes) {
           // File is small enough, try a larger scale
           binarySearchMinScale = scale;
           scale = Math.min(1.0, Math.round((scale + binarySearchMaxScale) / 2 * 20) / 20);
           
           // If we're already at max scale or very close to target size, we're done with this strategy
-          if (scale >= 0.95 || (targetSizeBytes - currentSize) / targetSizeBytes < 0.05) {
-            console.log(`Found good parameters for ${strategy.name}: Scale=${(scale * 100).toFixed(0)}%`);
+          if (scale >= 0.95 || (targetSizeBytes - currentSizeBytes) / targetSizeBytes < 0.05) {
+            if (!argv.quiet) console.log(`Found good parameters for ${strategy.name}: Scale=${(scale * 100).toFixed(0)}%`);
             break;
           }
         } else {
@@ -766,7 +833,7 @@ async function optimizeGif(argv) {
     
     // Try gifsicle optimization as a final step if we have a result
     if (bestSize !== null && fs.existsSync(output)) {
-      console.log("\nApplying final optimization with gifsicle...");
+      if (!argv.quiet) console.log("\nApplying final optimization with gifsicle...");
       
       // Use our isCommandAvailable function instead of execa which
       const hasGifsicle = await isCommandAvailable('gifsicle');
@@ -784,17 +851,17 @@ async function optimizeGif(argv) {
           const finalStats = fs.statSync(tempFile);
           const finalSize = finalStats.size;
           
-          console.log(`After gifsicle: ${(finalSize / (1024 * 1024)).toFixed(2)}MB (${((1 - finalSize/bestSize) * 100).toFixed(1)}% reduction)`);
+          if (!argv.quiet) console.log(`After gifsicle: ${(finalSize / (1024 * 1024)).toFixed(2)}MB (${((1 - finalSize/bestSize) * 100).toFixed(1)}% reduction)`);
           
           if (finalSize < bestSize) {
             fs.copyFileSync(tempFile, output);
             bestSize = finalSize;
           }
         } catch (error) {
-          console.log("Gifsicle optimization failed: " + error.message);
+          if (!argv.quiet) console.log("Gifsicle optimization failed: " + error.message);
         }
       } else {
-        console.log("Gifsicle not available, skipping additional optimization.");
+        if (!argv.quiet) console.log("Gifsicle not available, skipping additional optimization.");
       }
     }
 
@@ -832,31 +899,32 @@ async function optimizeGif(argv) {
     }
 
     if (bestSize <= targetSizeBytes) {
-      console.log(
-        `\nOptimized GIF saved as ${output} (${(bestSize / (1024 * 1024)).toFixed(2)}MB)`,
-      );
-      if (bestParams) {
-        console.log(`Best parameters: Scale=${(bestParams.scale * 100).toFixed(0)}%, ` +
-                   `FPS=${bestParams.fps}, Colors=${bestParams.colors}, Lossy=${bestParams.lossy}`);
+      if (!argv.quiet) {
+        console.log(
+          `\nOptimized GIF saved as ${output} (${(bestSize / (1024 * 1024)).toFixed(2)}MB)`,
+        );
+        if (bestParams) {
+          console.log(`Best parameters: Scale=${(bestParams.scale * 100).toFixed(0)}%, ` +
+                    `FPS=${bestParams.fps}, Colors=${bestParams.colors}, Lossy=${bestParams.lossy}`);
+        }
       }
+      exitWithResult({ output: output, size: bestSize, optimized: true, params: bestParams });
     } else if (bestSize !== null) {
-      console.log(
-        `\nBest attempt saved as ${output} (${(bestSize / (1024 * 1024)).toFixed(2)}MB)`,
-      );
-      console.error(
-        `Could not reduce file size below ${targetSizeMB}MB while maintaining acceptable quality`,
-      );
+      if (!argv.quiet) {
+        console.log(
+          `\nBest attempt saved as ${output} (${(bestSize / (1024 * 1024)).toFixed(2)}MB)`,
+        );
+        console.error(
+          `Could not reduce file size below ${targetSizeMB}MB while maintaining acceptable quality`,
+        );
+      }
+      exitWithResult({ output: output, size: bestSize, optimized: true, targetSizeExceeded: true, params: bestParams });
     } else {
-      console.error(
-        `\nCould not generate an optimized GIF. No output file was created.`
-      );
-      process.exit(1);
+      exitWithResult({ error: "Could not generate an optimized GIF. No output file was created." }, false);
     }
-    
-    // Ensure the script exits cleanly
-    process.exit(0);
   } catch (error) {
-    console.error("Error optimizing GIF:", error.message);
+    if (!argv.quiet) console.error("Error optimizing GIF:", error.message);
+
     // Clean up temp files
     if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
     
@@ -890,11 +958,7 @@ async function getScreenResolution() {
     }
     throw new Error("Could not find screen resolution.");
   } catch (error) {
-    console.error(
-      "Error getting screen resolution. Please make sure xdpyinfo is installed and you are in a graphical environment.",
-      error,
-    );
-    process.exit(1);
+    exitWithResult({ error: "Error getting screen resolution. Please make sure xdpyinfo is installed and you are in a graphical environment." }, false);
   }
 }
 
@@ -923,42 +987,45 @@ async function main() {
 async function convertMp4ToGif(argv) {
   const input = argv.input;
   if (!fs.existsSync(input)) {
-    console.error(`Error: Input file ${input} does not exist`);
-    process.exit(1);
+    exitWithResult({ error: `Input file ${input} does not exist` }, false);
   }
 
-  console.log(`Converting ${input} to GIF...`);
+  if (!argv.quiet) console.log(`Converting ${input} to GIF...`);
 
   const output = getLastArg(argv.output);
 
-  const palettegenArgs = [
-    "-i",
-    input,
-    "-vf",
-    `palettegen`,
-    "-y",
-    "palette.png",
-  ];
+  try {
+    const palettegenArgs = [
+      "-i",
+      input,
+      "-vf",
+      `palettegen`,
+      "-y",
+      "palette.png",
+    ];
 
-  await execa("ffmpeg", palettegenArgs);
+    await execa("ffmpeg", palettegenArgs);
 
-  const gifArgs = [
-    "-i",
-    input,
-    "-i",
-    "palette.png",
-    "-filter_complex",
-    `[0:v]paletteuse`,
-    "-y",
-    output,
-  ];
+    const gifArgs = [
+      "-i",
+      input,
+      "-i",
+      "palette.png",
+      "-filter_complex",
+      `[0:v]paletteuse`,
+      "-y",
+      output,
+    ];
 
-  await execa("ffmpeg", gifArgs);
+    await execa("ffmpeg", gifArgs);
 
-  fs.unlinkSync("palette.png");
+    fs.unlinkSync("palette.png");
 
-  console.log(`GIF saved as ${output}`);
-  process.exit(0);
+    if (!argv.quiet) console.log(`GIF saved as ${output}`);
+    exitWithResult({ output: output, format: 'gif' });
+  } catch (error) {
+    exitWithResult({ error: `Conversion failed: ${error.message}` }, false);
+  }
 }
 
 async function cutGif(argv) {
@@ -978,16 +1045,14 @@ async function cutGif(argv) {
   }
 
   if (!input) {
-    console.error("Error: Please provide an input GIF file to cut");
-    process.exit(1);
+    exitWithResult({ error: "Please provide an input GIF file to cut" }, false);
   }
 
   if (!fs.existsSync(input)) {
-    console.error(`Error: Input file ${input} does not exist`);
-    process.exit(1);
+    exitWithResult({ error: `Input file ${input} does not exist` }, false);
   }
 
-  console.log(`Cutting ${input}...`);
+  if (!argv.quiet) console.log(`Cutting ${input}...`);
 
   // Get the duration of the input GIF
   try {
@@ -1003,17 +1068,11 @@ async function cutGif(argv) {
     const duration = parseFloat(durationOutput.stdout);
 
     if (start >= duration) {
-      console.error(
-        `Error: --start value (${start}s) is greater than or equal to the GIF duration (${duration}s).`,
-      );
-      process.exit(1);
+      exitWithResult({ error: `--start value (${start}s) is greater than or equal to the GIF duration (${duration}s).` }, false);
     }
 
     if (start + end >= duration) {
-      console.error(
-        `Error: The sum of --start (${start}s) and --end (${end}s) is greater than or equal to the GIF duration (${duration}s).`,
-      );
-      process.exit(1);
+      exitWithResult({ error: `The sum of --start (${start}s) and --end (${end}s) is greater than or equal to the GIF duration (${duration}s).` }, false);
     }
 
     const cutDuration = duration - end;
@@ -1045,14 +1104,10 @@ async function cutGif(argv) {
       fs.renameSync(tempFile, output);
     }
 
-    console.log(`Cut GIF saved as ${output}`);
-    process.exit(0);
+    if (!argv.quiet) console.log(`Cut GIF saved as ${output}`);
+    exitWithResult({ output: output, format: 'gif', duration: cutDuration - start });
   } catch (error) {
-    console.error(
-      "Error getting GIF duration. Please make sure ffprobe is installed.",
-      error,
-    );
-    process.exit(1);
+    exitWithResult({ error: `Cut failed: ${error.message}` }, false);
   }
 }
 
@@ -1069,6 +1124,7 @@ async function recordScreen(argv) {
   const keepAspectRatio = getLastArg(argv.keepAspectRatio);
   const output = getLastArg(argv.output);
   const mp4 = getLastArg(argv.mp4);
+  const duration_limit = getLastArg(argv.duration);
 
   const resolution = resolutions[gifArg] || gifArg || "1280x720";
   const [gifWidth, gifHeight] = resolution.split("x").map(Number);
@@ -1081,7 +1137,8 @@ async function recordScreen(argv) {
 
   const screenResolution = await getScreenResolution();
 
-  console.log("Starting screen recording... Press CTRL+C to stop.");
+  if (!argv.quiet) console.log("Starting screen recording... Press CTRL+C to stop.");
+  if (duration_limit && !argv.quiet) console.log(`Recording will automatically stop after ${duration_limit} seconds.`);
 
   const recordingProcess = execa(
     "ffmpeg",
@@ -1103,100 +1160,112 @@ async function recordScreen(argv) {
     { stdio: "pipe", reject: false },
   );
 
-  process.on("SIGINT", async () => {
-    console.log("\nStopping recording...");
+  let isStopping = false;
+  async function stopAndProcess() {
+    if (isStopping) return;
+    isStopping = true;
+
+    if (!argv.quiet) console.log("\nStopping recording...");
     recordingProcess.stdin.write("q");
     await recordingProcess;
 
-    console.log("Processing video...");
+    if (!argv.quiet) console.log("Processing video...");
 
-    const durationOutput = await execa("ffprobe", [
-      "-v",
-      "error",
-      "-show_entries",
-      "format=duration",
-      "-of",
-      "default=noprint_wrappers=1:nokey=1",
-      tempMp4,
-    ]);
-    const duration = parseFloat(durationOutput.stdout);
-
-    if (start >= duration) {
-      console.error(
-        `Error: --start value (${start}s) is greater than or equal to the video duration (${duration}s).`,
-      );
-      process.exit(1);
-    }
-
-    if (start + end >= duration) {
-      console.error(
-        `Error: The sum of --start (${start}s) and --end (${end}s) is greater than or equal to the video duration (${duration}s).`,
-      );
-      process.exit(1);
-    }
-
-    const cutDuration = duration - end;
-
-    let scaleFilter;
-    if (keepAspectRatio) {
-      scaleFilter = `scale=${gifWidth}:-1:flags=lanczos`;
-    } else {
-      scaleFilter = `scale=${gifWidth}:${gifHeight}:flags=lanczos`;
-    }
-
-    if (mp4) {
-      const mp4Args = [
-        "-i",
+    try {
+      const durationOutput = await execa("ffprobe", [
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
         tempMp4,
-        "-vf",
-        `crop=iw-${left}-${right}:ih-${top}-${bottom}:${left}:${top},setpts=${1 / speed}*PTS,${scaleFilter}`,
-        "-ss",
-        start.toString(),
-        "-to",
-        cutDuration.toString(),
-        "-y",
-        outputFilename,
-      ];
+      ]);
+      const duration = parseFloat(durationOutput.stdout);
 
-      await execa("ffmpeg", mp4Args);
-      console.log(`MP4 saved as ${outputFilename}`);
-    } else {
-      console.log("Converting to GIF...");
-      const palettegenArgs = [
-        "-i",
-        tempMp4,
-        "-vf",
-        `palettegen`,
-        "-y",
-        "palette.png",
-      ];
+      if (start >= duration) {
+        exitWithResult({ error: `--start value (${start}s) is greater than or equal to the video duration (${duration}s).` }, false);
+      }
 
-      await execa("ffmpeg", palettegenArgs);
+      if (start + end >= duration) {
+        exitWithResult({ error: `The sum of --start (${start}s) and --end (${end}s) is greater than or equal to the video duration (${duration}s).` }, false);
+      }
 
-      const gifArgs = [
-        "-i",
-        tempMp4,
-        "-i",
-        "palette.png",
-        "-filter_complex",
-        `[0:v]crop=iw-${left}-${right}:ih-${top}-${bottom}:${left}:${top},setpts=${1 / speed}*PTS,${scaleFilter}[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle`,
-        "-ss",
-        start.toString(),
-        "-to",
-        cutDuration.toString(),
-        "-y",
-        outputFilename,
-      ];
+      const cutDuration = duration - end;
 
-      await execa("ffmpeg", gifArgs);
-      console.log(`GIF saved as ${outputFilename}`);
-      fs.unlinkSync("palette.png");
+      let scaleFilter;
+      if (keepAspectRatio) {
+        scaleFilter = `scale=${gifWidth}:-1:flags=lanczos`;
+      } else {
+        scaleFilter = `scale=${gifWidth}:${gifHeight}:flags=lanczos`;
+      }
+
+      if (mp4) {
+        const mp4Args = [
+          "-i",
+          tempMp4,
+          "-vf",
+          `crop=iw-${left}-${right}:ih-${top}-${bottom}:${left}:${top},setpts=${1 / speed}*PTS,${scaleFilter}`,
+          "-ss",
+          start.toString(),
+          "-to",
+          cutDuration.toString(),
+          "-y",
+          outputFilename,
+        ];
+
+        await execa("ffmpeg", mp4Args);
+        if (!argv.quiet) console.log(`MP4 saved as ${outputFilename}`);
+        exitWithResult({ output: outputFilename, format: 'mp4', duration: duration });
+      } else {
+        if (!argv.quiet) console.log("Converting to GIF...");
+        const palettegenArgs = [
+          "-i",
+          tempMp4,
+          "-vf",
+          `palettegen`,
+          "-y",
+          "palette.png",
+        ];
+
+        await execa("ffmpeg", palettegenArgs);
+
+        const gifArgs = [
+          "-i",
+          tempMp4,
+          "-i",
+          "palette.png",
+          "-filter_complex",
+          `[0:v]crop=iw-${left}-${right}:ih-${top}-${bottom}:${left}:${top},setpts=${1 / speed}*PTS,${scaleFilter}[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle`,
+          "-ss",
+          start.toString(),
+          "-to",
+          cutDuration.toString(),
+          "-y",
+          outputFilename,
+        ];
+
+        await execa("ffmpeg", gifArgs);
+        if (!argv.quiet) console.log(`GIF saved as ${outputFilename}`);
+        fs.unlinkSync("palette.png");
+        
+        // Cleanup temp file
+        if (fs.existsSync(tempMp4)) {
+          fs.unlinkSync(tempMp4);
+        }
+        
+        exitWithResult({ output: outputFilename, format: 'gif', duration: duration });
+      }
+    } catch (error) {
+      exitWithResult({ error: `Processing failed: ${error.message}` }, false);
     }
+  }
 
-    // Cleanup
-    fs.unlinkSync(tempMp4);
-    process.exit(0);
-  });
+  process.on("SIGINT", stopAndProcess);
+
+  if (duration_limit) {
+    setTimeout(stopAndProcess, duration_limit * 1000);
+  }
 }
 
 main();
